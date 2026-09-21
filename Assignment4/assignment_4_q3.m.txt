@@ -1,0 +1,73 @@
+clear; clc;
+
+%% Question 3: Panel data model on Murder.xlsx
+
+T = readtable('Murder.xlsx', 'Sheet','Data');
+
+%% Part(B) Use only 1990 and 1993
+
+subset = (T.year == 90 | T.year == 93);
+data = T(subset, :);
+
+Y = data.mrdrte;
+exec = data.exec;
+unem = data.unem;
+year_93 = (data.year == 93); % to create an year dummy
+
+X = [ones(size(Y)), exec, unem, year_93];
+k = size(X, 2);
+n = size(X, 1);
+%Estimation using OLS
+
+beta_ols = (X' * X) \ (X' * Y);
+yhat_ols = X * beta_ols;
+res_ols = Y - yhat_ols;
+
+sigma2_ols = (res_ols' * res_ols) / (n - k);
+Var_ols = sigma2_ols * inv(X' * X);
+se_ols = sqrt(diag(Var_ols));
+tstat_ols = beta_ols ./ se_ols;
+
+disp(table(beta_ols, se_ols, tstat_ols, 'VariableNames', {'Beta','StdErr','tstat'}));
+
+%% Using Fixed effects using first differencing
+
+ustates = unique(data.state);
+dY = [];
+dExec = [];
+dUnem = [];
+
+keep_idx = false(numel(ustates), 1);
+for i = 1:numel(ustates)
+    Si = data(strcmp(data.state, ustates{i}), :);
+    if sum(Si.year == 90) == 1 && sum(Si.year == 93) == 1
+        Si = sortrows(Si, 'year');
+        dY(end + 1, 1) = Si.mrdrte(Si.year == 93) - Si.mrdrte(Si.year == 90);
+        dExec(end+1,1) = Si.exec(Si.year==93)   - Si.exec(Si.year==90);
+        dUnem(end+1,1) = Si.unem(Si.year==93)   - Si.unem(Si.year==90);
+        keep_idx(i) = true;
+    end
+end        
+
+dX = [ones(size(dY)), dExec, dUnem];
+beta_fe = (dX' * dX) \ (dX' * dY);
+res_fe = dY - dX * beta_fe;
+
+%homeskedastic errors
+sigma2_fe = (res_fe' * res_fe) / (size(dX, 1) - size(dX, 2));
+Var_fe = sigma2_fe * inv(dX' * dX);
+se_fe = sqrt(diag(Var_fe));
+tstat_fe = beta_fe ./ se_fe;
+
+varnames = {'Constant', 'Executions', 'Unemployment'};
+disp(table(varnames', beta_fe, se_fe, tstat_fe, 'VariableNames', {'Regressor', 'Beta','StdErr','tstat'}));
+
+%% D) Heteroskedastic errors for the estimates in part B
+
+meat = X' * diag(res_ols.^2) * X;
+bread = inv(X' * X);
+varb_robust = bread * meat * bread;
+se_robust = sqrt(diag(varb_robust));
+t_robust = beta_ols ./ se_robust;
+varnames_robust = {'constant', 'exec', 'unem', 'dummy'};
+disp(table(varnames_robust', beta_ols, se_robust, t_robust, 'VariableNames', {'Regressor', 'Beta','StdErr','tstat'}));
